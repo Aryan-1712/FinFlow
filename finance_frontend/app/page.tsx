@@ -1,10 +1,12 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Navigation } from "@/components/navigation"
 import { StatCard } from "@/components/stat-card"
 import { InsightCard } from "@/components/insight-card"
 import { HealthScore } from "@/components/health-score"
-import { dashboardData } from "@/lib/dummy-data"
+import api, { type DashboardData } from "@/services/api"
+import { useAuth } from "@/context/auth-context"
 import { Wallet, PiggyBank, CreditCard, Plus, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -30,7 +32,51 @@ function formatCurrency(amount: number) {
   }).format(amount)
 }
 
+const emptyDashboardData: DashboardData = {
+  healthScore: 0,
+  totalSpending: 0,
+  totalSavings: 0,
+  subscriptionCost: 0,
+  spendingByCategory: [],
+  monthlyTrend: [],
+  insights: [],
+}
+
 export default function DashboardPage() {
+  const { user } = useAuth()
+  const [dashboardData, setDashboardData] = useState<DashboardData>(emptyDashboardData)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    let isMounted = true
+
+    api.getDashboardData()
+      .then((data) => {
+        if (isMounted) setDashboardData(data)
+      })
+      .catch((err: Error) => {
+        if (isMounted) setError(err.message || "Unable to load dashboard data.")
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const displayName = user?.first_name || user?.username || "there"
+  const currentMonth = new Intl.DateTimeFormat("en-IN", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date())
+  const hasCategoryData = dashboardData.spendingByCategory.some((item) => item.value > 0)
+  const hasTrendData = dashboardData.monthlyTrend.some(
+    (item) => item.spending > 0 || item.savings > 0
+  )
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -41,11 +87,16 @@ export default function DashboardPage() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                Good morning, Arjun
+                Good morning, {displayName}
               </h1>
               <p className="text-muted-foreground mt-1">
-                {"Here's your financial overview for March 2024"}
+                {isLoading
+                  ? "Loading your financial overview..."
+                  : `Here's your financial overview for ${currentMonth}`}
               </p>
+              {error && (
+                <p className="text-sm text-destructive mt-2">{error}</p>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <Button asChild variant="outline" size="sm">
@@ -72,7 +123,9 @@ export default function DashboardPage() {
               </h3>
               <HealthScore score={dashboardData.healthScore} size="md" />
               <p className="text-xs text-muted-foreground mt-4 text-center">
-                Based on your spending, savings, and financial habits
+                {dashboardData.healthScore > 0
+                  ? "Based on your spending, savings, and financial habits"
+                  : "Add expenses to calculate your score"}
               </p>
             </div>
 
@@ -96,7 +149,7 @@ export default function DashboardPage() {
               <StatCard
                 title="Subscriptions"
                 value={formatCurrency(dashboardData.subscriptionCost)}
-                subtitle="8 active subscriptions"
+                subtitle="Monthly total"
                 icon={CreditCard}
               />
             </div>
@@ -110,42 +163,48 @@ export default function DashboardPage() {
                 Expense Categories
               </h3>
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={dashboardData.spendingByCategory}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {dashboardData.spendingByCategory.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={`hsl(var(--chart-${(index % 5) + 1}))`}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value: number) => formatCurrency(value)}
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                        color: "hsl(var(--foreground))",
-                      }}
-                    />
-                    <Legend
-                      verticalAlign="bottom"
-                      height={36}
-                      formatter={(value) => (
-                        <span className="text-xs text-muted-foreground">{value}</span>
-                      )}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                {hasCategoryData ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={dashboardData.spendingByCategory}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={90}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {dashboardData.spendingByCategory.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={`hsl(var(--chart-${(index % 5) + 1}))`}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number) => formatCurrency(value)}
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                          color: "hsl(var(--foreground))",
+                        }}
+                      />
+                      <Legend
+                        verticalAlign="bottom"
+                        height={36}
+                        formatter={(value) => (
+                          <span className="text-xs text-muted-foreground">{value}</span>
+                        )}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                    No category data yet.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -155,59 +214,65 @@ export default function DashboardPage() {
                 Monthly Trend
               </h3>
               <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={dashboardData.monthlyTrend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis
-                      dataKey="month"
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(value) => `${value / 1000}k`}
-                    />
-                    <Tooltip
-                      formatter={(value: number) => formatCurrency(value)}
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                        color: "hsl(var(--foreground))",
-                      }}
-                    />
-                    <Legend
-                      verticalAlign="top"
-                      height={36}
-                      formatter={(value) => (
-                        <span className="text-xs text-muted-foreground capitalize">
-                          {value}
-                        </span>
-                      )}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="spending"
-                      stroke="hsl(var(--chart-4))"
-                      strokeWidth={2}
-                      dot={{ fill: "hsl(var(--chart-4))", strokeWidth: 0, r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="savings"
-                      stroke="hsl(var(--chart-1))"
-                      strokeWidth={2}
-                      dot={{ fill: "hsl(var(--chart-1))", strokeWidth: 0, r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                {hasTrendData ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={dashboardData.monthlyTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis
+                        dataKey="month"
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value) => `${value / 1000}k`}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => formatCurrency(value)}
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                          color: "hsl(var(--foreground))",
+                        }}
+                      />
+                      <Legend
+                        verticalAlign="top"
+                        height={36}
+                        formatter={(value) => (
+                          <span className="text-xs text-muted-foreground capitalize">
+                            {value}
+                          </span>
+                        )}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="spending"
+                        stroke="hsl(var(--chart-4))"
+                        strokeWidth={2}
+                        dot={{ fill: "hsl(var(--chart-4))", strokeWidth: 0, r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="savings"
+                        stroke="hsl(var(--chart-1))"
+                        strokeWidth={2}
+                        dot={{ fill: "hsl(var(--chart-1))", strokeWidth: 0, r: 4 }}
+                        activeDot={{ r: 6 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                    No monthly trend yet.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -224,9 +289,15 @@ export default function DashboardPage() {
               </Link>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {dashboardData.insights.map((insight, index) => (
-                <InsightCard key={index} insight={insight} />
-              ))}
+              {dashboardData.insights.length > 0 ? (
+                dashboardData.insights.map((insight, index) => (
+                  <InsightCard key={index} insight={insight} />
+                ))
+              ) : (
+                <div className="md:col-span-3 bg-card border border-border rounded-xl p-5 text-sm text-muted-foreground">
+                  No insights yet. Add expenses and generate insights to see recommendations.
+                </div>
+              )}
             </div>
           </div>
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { Navigation } from "@/components/navigation"
 import { ExpenseForm } from "@/components/expense-form"
 import { Button } from "@/components/ui/button"
@@ -12,8 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { expenses as initialExpenses, expenseCategories } from "@/lib/dummy-data"
-import type { Expense } from "@/services/api"
+import { expenseCategories } from "@/lib/dummy-data"
+import api, { type Expense } from "@/services/api"
 import { Plus, Search, Pencil, Trash2, Filter, X } from "lucide-react"
 import {
   BarChart,
@@ -43,12 +43,32 @@ function formatDate(dateString: string) {
 }
 
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>(initialExpenses)
+  const [expenses, setExpenses] = useState<Expense[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | undefined>()
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
-  const [showFilters, setShowFilters] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    let isMounted = true
+
+    api.getExpenses()
+      .then((data) => {
+        if (isMounted) setExpenses(data)
+      })
+      .catch((err: Error) => {
+        if (isMounted) setError(err.message || "Unable to load expenses.")
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   // Filter expenses
   const filteredExpenses = useMemo(() => {
@@ -73,28 +93,42 @@ export default function ExpensesPage() {
 
   const totalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
 
-  const handleAddExpense = (data: Omit<Expense, "id">) => {
-    const newExpense: Expense = {
-      ...data,
-      id: Date.now().toString(),
+  const handleAddExpense = async (data: Omit<Expense, "id">) => {
+    setError("")
+    try {
+      const newExpense = await api.createExpense(data)
+      setExpenses([newExpense, ...expenses])
+      setShowForm(false)
+    } catch (err: any) {
+      setError(err.message || "Unable to add expense.")
     }
-    setExpenses([newExpense, ...expenses])
-    setShowForm(false)
   }
 
-  const handleEditExpense = (data: Omit<Expense, "id">) => {
+  const handleEditExpense = async (data: Omit<Expense, "id">) => {
     if (!editingExpense) return
-    setExpenses(
-      expenses.map((e) =>
-        e.id === editingExpense.id ? { ...data, id: e.id } : e
+    setError("")
+    try {
+      const updatedExpense = await api.updateExpense(editingExpense.id, data)
+      setExpenses(
+        expenses.map((e) =>
+          e.id === editingExpense.id ? updatedExpense : e
+        )
       )
-    )
-    setEditingExpense(undefined)
-    setShowForm(false)
+      setEditingExpense(undefined)
+      setShowForm(false)
+    } catch (err: any) {
+      setError(err.message || "Unable to update expense.")
+    }
   }
 
-  const handleDeleteExpense = (id: string) => {
-    setExpenses(expenses.filter((e) => e.id !== id))
+  const handleDeleteExpense = async (id: string) => {
+    setError("")
+    try {
+      await api.deleteExpense(id)
+      setExpenses(expenses.filter((e) => e.id !== id))
+    } catch (err: any) {
+      setError(err.message || "Unable to delete expense.")
+    }
   }
 
   return (
@@ -110,8 +144,11 @@ export default function ExpensesPage() {
                 Expense Tracker
               </h1>
               <p className="text-muted-foreground mt-1">
-                Track and manage your daily expenses
+                {isLoading ? "Loading your expenses..." : "Track and manage your daily expenses"}
               </p>
+              {error && (
+                <p className="text-sm text-destructive mt-2">{error}</p>
+              )}
             </div>
             <Button onClick={() => setShowForm(true)} size="sm">
               <Plus className="w-4 h-4 mr-2" />
@@ -140,38 +177,44 @@ export default function ExpensesPage() {
                 Category Breakdown
               </h3>
               <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={categoryBreakdown} layout="horizontal">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis
-                      dataKey="name"
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={10}
-                      tickLine={false}
-                      axisLine={false}
-                      angle={-45}
-                      textAnchor="end"
-                      height={60}
-                    />
-                    <YAxis
-                      stroke="hsl(var(--muted-foreground))"
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(value) => `${value / 1000}k`}
-                    />
-                    <Tooltip
-                      formatter={(value: number) => formatCurrency(value)}
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                        color: "hsl(var(--foreground))",
-                      }}
-                    />
-                    <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                {categoryBreakdown.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={categoryBreakdown} layout="horizontal">
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis
+                        dataKey="name"
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={10}
+                        tickLine={false}
+                        axisLine={false}
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value) => `${value / 1000}k`}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => formatCurrency(value)}
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "8px",
+                          color: "hsl(var(--foreground))",
+                        }}
+                      />
+                      <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                    No category data yet.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -231,7 +274,7 @@ export default function ExpensesPage() {
             <div className="divide-y divide-border">
               {filteredExpenses.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground">
-                  No expenses found. Add your first expense!
+                  {isLoading ? "Loading expenses..." : "No expenses found. Add your first expense!"}
                 </div>
               ) : (
                 filteredExpenses.map((expense) => (

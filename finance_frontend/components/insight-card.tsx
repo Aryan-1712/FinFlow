@@ -1,16 +1,18 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { AlertTriangle, Lightbulb, Trophy, ArrowRight } from "lucide-react"
+import { AlertTriangle, Lightbulb, Trophy, ArrowRight, Info } from "lucide-react"
 import type { SpendingInsight } from "@/services/api"
 
-const iconMap = {
+const iconMap: Record<SpendingInsight["type"], typeof AlertTriangle> = {
   warning: AlertTriangle,
   tip: Lightbulb,
   achievement: Trophy,
+  suggestion: Lightbulb,
+  info: Info,
 }
 
-const colorMap = {
+const colorMap: Record<SpendingInsight["type"], { bg: string; text: string; border: string }> = {
   warning: {
     bg: "bg-warning/10",
     text: "text-warning",
@@ -25,6 +27,16 @@ const colorMap = {
     bg: "bg-success/10",
     text: "text-success",
     border: "border-success/20",
+  },
+  suggestion: {
+    bg: "bg-primary/10",
+    text: "text-primary",
+    border: "border-primary/20",
+  },
+  info: {
+    bg: "bg-muted",
+    text: "text-muted-foreground",
+    border: "border-border",
   },
 }
 

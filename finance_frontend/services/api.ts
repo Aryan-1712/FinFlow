@@ -1,9 +1,45 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // services/api.ts  —  FinFlow frontend API client
-// Connects to Django + DRF backend at http://127.0.0.1:8000
+// Connects to the Django + DRF backend.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api"
+function resolveBaseUrl() {
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim()
+
+  if (!configuredUrl) {
+    return process.env.NODE_ENV === "production"
+      ? "https://finflow-backend-wc4f.onrender.com/api"
+      : "http://127.0.0.1:8000/api"
+  }
+
+  const withoutTrailingSlash = configuredUrl.replace(/\/+$/, "")
+  return withoutTrailingSlash.endsWith("/api")
+    ? withoutTrailingSlash
+    : `${withoutTrailingSlash}/api`
+}
+
+const BASE_URL = resolveBaseUrl()
+
+function formatApiError(error: unknown, fallback: string) {
+  if (!error || typeof error !== "object") return fallback
+
+  if ("detail" in error && typeof error.detail === "string") {
+    return error.detail
+  }
+
+  const messages = Object.entries(error as Record<string, unknown>).flatMap(([field, value]) => {
+    const label = field === "non_field_errors" ? "Error" : field.replaceAll("_", " ")
+    if (Array.isArray(value)) {
+      return value.map((message) => `${label}: ${String(message)}`)
+    }
+    if (typeof value === "string") {
+      return [`${label}: ${value}`]
+    }
+    return []
+  })
+
+  return messages.length ? messages.join(" ") : fallback
+}
 
 // ── Token storage ─────────────────────────────────────────────────────────────
 
@@ -58,7 +94,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    throw new Error(error.detail || `API Error: ${response.status} ${response.statusText}`)
+    throw new Error(formatApiError(error, `API Error: ${response.status} ${response.statusText}`))
   }
 
   // Handle 204 No Content (DELETE)
