@@ -64,28 +64,23 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "finance_backend.wsgi.application"
 
-# Database — SQLite by default, PostgreSQL via env
+# Database — SQLite locally, PostgreSQL on Render via DATABASE_URL.
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
+}
+
 DATABASE_URL = os.environ.get("DATABASE_URL")
-if DATABASE_URL and DATABASE_URL.startswith("postgres"):
-    import urllib.parse as urlparse
-    url = urlparse.urlparse(DATABASE_URL)
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "NAME": url.path[1:],
-            "USER": url.username,
-            "PASSWORD": url.password,
-            "HOST": url.hostname,
-            "PORT": url.port or 5432,
-        }
-    }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+if DATABASE_URL:
+    import dj_database_url
+
+    DATABASES["default"] = dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=600,
+        ssl_require=DATABASE_URL.startswith("postgres"),
+    )
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
