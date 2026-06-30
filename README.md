@@ -163,56 +163,6 @@ GET    /api/dashboard/
 GET    /api/insights/
 ```
 
-## Render Deployment
-
-### Backend
-
-If the Render root directory is the repo root:
-
-```bash
-cd finance_backend && bash build.sh
-```
-
-Start command:
-
-```bash
-cd finance_backend && gunicorn finance_backend.wsgi:application
-```
-
-If the Render root directory is `finance_backend`:
-
-```bash
-bash build.sh
-```
-
-Start command:
-
-```bash
-gunicorn finance_backend.wsgi:application
-```
-
-The build script installs dependencies, collects static files, and runs migrations.
-
-### Frontend
-
-Build command:
-
-```bash
-pnpm install && pnpm build
-```
-
-Start command:
-
-```bash
-pnpm start
-```
-
-Set:
-
-```env
-NEXT_PUBLIC_API_URL=https://finflow-backend-wc4f.onrender.com
-```
-
 ## Screens
 
 - Register and login
